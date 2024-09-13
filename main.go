@@ -23,10 +23,21 @@ const version = "0.0.3"
 var revision = "HEAD"
 
 type Item struct {
-	ID    string `json:"id"`
-	Name  string `json:"name"`
-	Price int    `json:"price"`
-	Note  string `json:"note"`
+	ID           int     `json:"id"`
+	Name         string  `json:"name"`
+	NameEn       string  `json:"nameEn"`
+	NameZh       string  `json:"nameZh"`
+	Price        int     `json:"price"`
+	PriceWithTax int     `json:"priceWithTax"`
+	Calorie      int     `json:"calorie"`
+	Salt         float64 `json:"salt"`
+	Category     string  `json:"category"`
+	CategoryEn   string  `json:"categoryEn"`
+	CategoryZh   string  `json:"categoryZh"`
+	Genre        string  `json:"genre"`
+	IsAlcohol    bool    `json:"isAlcohol"`
+	Icon         string  `json:"icon"`
+	PreID        string  `json:"preId"`
 }
 
 var (
