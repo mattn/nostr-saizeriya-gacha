@@ -98,7 +98,11 @@ func handler(nsec string) func(w http.ResponseWriter, r *http.Request) {
 
 		var buf bytes.Buffer
 		for _, m := range founds {
-			fmt.Fprintf(&buf, "%s: %s%s %d円\n", m.PreID, m.Icon, m.Name, m.Price)
+			fmt.Fprintf(&buf, "%d: %s%s %d円", m.ID, m.Icon, m.Name, m.Price)
+			if m.PreID != "" {
+				fmt.Fprintf(&buf, " (%s)", m.PreID)
+			}
+			fmt.Fprintln(&buf)
 		}
 		fmt.Fprintf(&buf, "\n#サイゼリヤガチャ")
 
