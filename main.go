@@ -2,7 +2,6 @@ package main
 
 import (
 	"bytes"
-	_ "embed"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -11,6 +10,8 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/nbd-wtf/go-nostr"
 	"github.com/nbd-wtf/go-nostr/nip19"
@@ -22,36 +23,76 @@ const version = "0.0.6"
 
 var revision = "HEAD"
 
-type Item struct {
+var menuURL = "https://raw.githubusercontent.com/ryohidaka/saizeriya-menus/main/saizeriya.json"
+
+type Menu struct {
 	ID           int     `json:"id"`
 	Name         string  `json:"name"`
-	NameEn       string  `json:"nameEn"`
-	NameZh       string  `json:"nameZh"`
+	NameEn       string  `json:"name_en"`
+	NameZh       string  `json:"name_zh"`
 	Price        int     `json:"price"`
-	PriceWithTax int     `json:"priceWithTax"`
+	PriceWithTax int     `json:"price_with_tax"`
 	Calorie      int     `json:"calorie"`
 	Salt         float64 `json:"salt"`
 	Category     string  `json:"category"`
-	CategoryEn   string  `json:"categoryEn"`
-	CategoryZh   string  `json:"categoryZh"`
+	CategoryEn   string  `json:"category_en"`
+	CategoryZh   string  `json:"category_zh"`
 	Genre        string  `json:"genre"`
-	IsAlcohol    bool    `json:"isAlcohol"`
+	IsAlcohol    bool    `json:"is_alcohol"`
 	Icon         string  `json:"icon"`
-	PreID        string  `json:"preId"`
+	PreID        string  `json:"pre_id"`
+}
+
+type MenuInfo struct {
+	Menus       []Menu    `json:"menus"`
+	LastUpdated time.Time `json:"last_updated"`
 }
 
 var (
-	//go:embed menu.json
-	menujson []byte
-
-	menu []Item
+	menu []Menu
+	mu   sync.Mutex
 )
 
-func init() {
-	err := json.Unmarshal(menujson, &menu)
+func updateMenu() {
+	mu.Lock()
+	defer mu.Unlock()
+	log.Println("updating menu")
+
+	resp, err := http.Get(menuURL)
 	if err != nil {
-		log.Fatal(err)
+		return
 	}
+	defer resp.Body.Close()
+	var info MenuInfo
+	json.NewDecoder(resp.Body).Decode(&info)
+	menu = info.Menus
+}
+
+func gacha(price int) []Menu {
+	mu.Lock()
+	defer mu.Unlock()
+
+	founds := []Menu{}
+
+	for {
+		rand.Shuffle(len(menu), func(i, j int) {
+			menu[i], menu[j] = menu[j], menu[i]
+		})
+
+		hit := -1
+		for i, m := range menu {
+			if m.Price <= price {
+				price -= m.Price
+				hit = i
+				break
+			}
+		}
+		if hit == -1 {
+			break
+		}
+		founds = append(founds, menu[hit])
+	}
+	return founds
 }
 
 func handler(nsec string) func(w http.ResponseWriter, r *http.Request) {
@@ -75,26 +116,7 @@ func handler(nsec string) func(w http.ResponseWriter, r *http.Request) {
 			price = 1000
 		}
 
-		founds := []Item{}
-
-		for {
-			rand.Shuffle(len(menu), func(i, j int) {
-				menu[i], menu[j] = menu[j], menu[i]
-			})
-
-			hit := -1
-			for i, m := range menu {
-				if m.Price <= price {
-					price -= m.Price
-					hit = i
-					break
-				}
-			}
-			if hit == -1 {
-				break
-			}
-			founds = append(founds, menu[hit])
-		}
+		founds := gacha(price)
 
 		var buf bytes.Buffer
 		for _, m := range founds {
@@ -145,6 +167,15 @@ func main() {
 	if nsec == "" {
 		log.Fatal("BOT_NSEC is not set")
 	}
+
+	updateMenu()
+
+	go func() {
+		for {
+			time.Sleep(time.Hour)
+			updateMenu()
+		}
+	}()
 
 	http.HandleFunc("/", handler(nsec))
 
