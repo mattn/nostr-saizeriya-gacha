@@ -18,7 +18,7 @@ import (
 
 const name = "nostr-saizeriya-gacha"
 
-const version = "0.0.0"
+const version = "0.0.1"
 
 var revision = "HEAD"
 
