@@ -116,6 +116,7 @@ func handler(nsec string) func(w http.ResponseWriter, r *http.Request) {
 				eev.Tags = eev.Tags.AppendUnique(te)
 			}
 		}
+		eev.Tags = eev.Tags.AppendUnique(nostr.Tag{"p", ev.PubKey})
 		eev.Tags = eev.Tags.AppendUnique(nostr.Tag{"t", "サイゼリヤガチャ"})
 		eev.Sign(sk)
 
