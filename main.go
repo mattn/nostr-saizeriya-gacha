@@ -112,21 +112,28 @@ func handler(nsec string) func(w http.ResponseWriter, r *http.Request) {
 		if len(tok) == 2 {
 			price, _ = strconv.Atoi(tok[1])
 		}
-		if price < 0 {
+		if price <= 0 {
 			price = 1000
 		}
 
-		founds := gacha(price)
-
 		var buf bytes.Buffer
-		for _, m := range founds {
-			fmt.Fprintf(&buf, "%d: %s%s %d円", m.ID, m.Icon, m.Name, m.Price)
-			if m.PreID != "" {
-				fmt.Fprintf(&buf, " (%s)", m.PreID)
+		if price <= 30000 {
+			founds := gacha(price)
+			if len(founds) == 0 {
+				fmt.Fprintf(&buf, "見つかりませんでした")
+			} else {
+				for _, m := range founds {
+					fmt.Fprintf(&buf, "%d: %s%s %d円", m.ID, m.Icon, m.Name, m.Price)
+					if m.PreID != "" {
+						fmt.Fprintf(&buf, " (%s)", m.PreID)
+					}
+					fmt.Fprintln(&buf)
+				}
+				fmt.Fprintf(&buf, "\n#サイゼリヤガチャ")
 			}
-			fmt.Fprintln(&buf)
+		} else {
+			fmt.Fprintf(&buf, "30000 円までにして下さい")
 		}
-		fmt.Fprintf(&buf, "\n#サイゼリヤガチャ")
 
 		eev := nostr.Event{}
 		var sk string
