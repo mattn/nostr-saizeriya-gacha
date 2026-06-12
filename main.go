@@ -68,6 +68,19 @@ func updateMenu() {
 	menu = info.Menus
 }
 
+func search(keyword string) []Menu {
+	mu.Lock()
+	defer mu.Unlock()
+
+	founds := []Menu{}
+	for _, m := range menu {
+		if strings.Contains(m.Name, keyword) {
+			founds = append(founds, m)
+		}
+	}
+	return founds
+}
+
 func gacha(price int) []Menu {
 	mu.Lock()
 	defer mu.Unlock()
@@ -95,75 +108,113 @@ func gacha(price int) []Menu {
 	return founds
 }
 
+func formatMenus(buf *bytes.Buffer, menus []Menu) {
+	for _, m := range menus {
+		fmt.Fprintf(buf, "%d: %s%s %d円", m.ID, m.Icon, m.Name, m.Price)
+		if m.PreID != "" {
+			fmt.Fprintf(buf, " (%s)", m.PreID)
+		}
+		fmt.Fprintln(buf)
+	}
+}
+
+func handleGacha(tok []string) string {
+	price := 1000
+	if len(tok) == 2 {
+		price, _ = strconv.Atoi(tok[1])
+	}
+	if price <= 0 {
+		price = 1000
+	}
+	if price > 30000 {
+		return "30000 円までにして下さい"
+	}
+
+	founds := gacha(price)
+	if len(founds) == 0 {
+		return "見つかりませんでした"
+	}
+	var buf bytes.Buffer
+	formatMenus(&buf, founds)
+	fmt.Fprintf(&buf, "\n#サイゼリヤガチャ")
+	return buf.String()
+}
+
+func handleSearch(tok []string) string {
+	if len(tok) != 2 || tok[1] == "" {
+		return ""
+	}
+	founds := search(tok[1])
+	if len(founds) == 0 {
+		return "見つかりませんでした"
+	}
+	var buf bytes.Buffer
+	formatMenus(&buf, founds)
+	return buf.String()
+}
+
+func makeReply(nsec string, ev *nostr.Event, content string, hashtag string) (*nostr.Event, error) {
+	_, s, err := nip19.Decode(nsec)
+	if err != nil {
+		return nil, err
+	}
+	sk := s.(string)
+	pub, err := nostr.GetPublicKey(sk)
+	if err != nil {
+		return nil, err
+	}
+
+	eev := nostr.Event{}
+	eev.PubKey = pub
+	eev.Content = content
+	eev.CreatedAt = nostr.Now()
+	eev.Kind = ev.Kind
+	eev.Tags = eev.Tags.AppendUnique(nostr.Tag{"e", ev.ID, "", "reply"})
+	for _, te := range ev.Tags {
+		if te.Key() == "e" {
+			eev.Tags = eev.Tags.AppendUnique(te)
+		}
+	}
+	eev.Tags = eev.Tags.AppendUnique(nostr.Tag{"p", ev.PubKey})
+	if hashtag != "" {
+		eev.Tags = eev.Tags.AppendUnique(nostr.Tag{"t", hashtag})
+	}
+	if err := eev.Sign(sk); err != nil {
+		return nil, err
+	}
+	return &eev, nil
+}
+
 func handler(nsec string) func(w http.ResponseWriter, r *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			return
 		}
 		var ev nostr.Event
-		err := json.NewDecoder(r.Body).Decode(&ev)
-		if err != nil {
+		if err := json.NewDecoder(r.Body).Decode(&ev); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
 
 		tok := strings.Split(ev.Content, " ")
-		price := 1000
-		if len(tok) == 2 {
-			price, _ = strconv.Atoi(tok[1])
+
+		var content, hashtag string
+		switch tok[0] {
+		case "#サイゼリヤガチャ":
+			content = handleGacha(tok)
+			hashtag = "サイゼリヤガチャ"
+		case "サイゼ検索":
+			content = handleSearch(tok)
 		}
-		if price <= 0 {
-			price = 1000
+		if content == "" {
+			return
 		}
 
-		var buf bytes.Buffer
-		if price <= 30000 {
-			founds := gacha(price)
-			if len(founds) == 0 {
-				fmt.Fprintf(&buf, "見つかりませんでした")
-			} else {
-				for _, m := range founds {
-					fmt.Fprintf(&buf, "%d: %s%s %d円", m.ID, m.Icon, m.Name, m.Price)
-					if m.PreID != "" {
-						fmt.Fprintf(&buf, " (%s)", m.PreID)
-					}
-					fmt.Fprintln(&buf)
-				}
-				fmt.Fprintf(&buf, "\n#サイゼリヤガチャ")
-			}
-		} else {
-			fmt.Fprintf(&buf, "30000 円までにして下さい")
-		}
-
-		eev := nostr.Event{}
-		var sk string
-		if _, s, err := nip19.Decode(nsec); err != nil {
+		eev, err := makeReply(nsec, &ev, content, hashtag)
+		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
-		} else {
-			sk = s.(string)
+			return
 		}
-		if pub, err := nostr.GetPublicKey(sk); err == nil {
-			if _, err := nip19.EncodePublicKey(pub); err != nil {
-				http.Error(w, err.Error(), http.StatusInternalServerError)
-			}
-			eev.PubKey = pub
-		} else {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-		}
-
-		eev.Content = buf.String()
-		eev.CreatedAt = nostr.Now()
-		eev.Kind = ev.Kind
-		eev.Tags = eev.Tags.AppendUnique(nostr.Tag{"e", ev.ID, "", "reply"})
-		for _, te := range ev.Tags {
-			if te.Key() == "e" {
-				eev.Tags = eev.Tags.AppendUnique(te)
-			}
-		}
-		eev.Tags = eev.Tags.AppendUnique(nostr.Tag{"p", ev.PubKey})
-		eev.Tags = eev.Tags.AppendUnique(nostr.Tag{"t", "サイゼリヤガチャ"})
-		eev.Sign(sk)
-
 		w.Header().Set("content-type", "text/json; charset=utf-8")
 		json.NewEncoder(w).Encode(eev)
 	}
