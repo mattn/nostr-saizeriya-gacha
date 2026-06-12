@@ -200,11 +200,12 @@ func handler(nsec string) func(w http.ResponseWriter, r *http.Request) {
 
 		var content, hashtag string
 		switch tok[0] {
-		case "サイゼリヤガチャ":
+		case "サイゼリヤガチャ", "サイゼガチャ":
 			content = handleGacha(tok)
 			hashtag = "サイゼリヤガチャ"
-		case "サイゼ検索":
+		case "サイゼリヤ検索", "サイゼ検索":
 			content = handleSearch(tok)
+			hashtag = "サイゼリヤ検索"
 		}
 		if content == "" {
 			return
