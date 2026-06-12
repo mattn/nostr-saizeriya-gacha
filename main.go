@@ -167,7 +167,7 @@ func makeReply(nsec string, ev *nostr.Event, content string, hashtag string) (*n
 	eev := nostr.Event{}
 	eev.PubKey = pub
 	eev.Content = content
-	eev.CreatedAt = nostr.Now()
+	eev.CreatedAt = ev.CreatedAt + 1
 	eev.Kind = ev.Kind
 	eev.Tags = eev.Tags.AppendUnique(nostr.Tag{"e", ev.ID, "", "reply"})
 	for _, te := range ev.Tags {
